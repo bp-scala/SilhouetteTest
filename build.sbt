@@ -10,7 +10,9 @@ libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
-  "com.mohiva" %% "play-silhouette" % "3.0.0-RC1",
+  "com.mohiva" %% "play-silhouette" % "3.0.0-RC2",
+  "net.codingwell" %% "scala-guice" % "4.0.0-beta4",
+  "net.ceedubs" %% "ficus" % "1.1.2",
   specs2 % Test
 )
 
