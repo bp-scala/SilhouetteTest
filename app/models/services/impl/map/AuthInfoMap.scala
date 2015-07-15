@@ -1,5 +1,7 @@
 package models.services.impl.map
 
+import javax.inject.{Inject, Singleton}
+
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.impl.daos.DelegableAuthInfoDAO
@@ -9,15 +11,38 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 
-class OAuth2InfoMap extends AuthInfoMap[OAuth2Info]
-class OAuth1InfoMap extends AuthInfoMap[OAuth1Info]
-class PasswordInfoMap extends AuthInfoMap[PasswordInfo]
-class OpenIDInfoMap extends AuthInfoMap[OpenIDInfo]
+@Singleton
+class OAuth2InfoMap @Inject() extends AuthInfoMap[OAuth2Info]
+
+class OAuth1InfoMap @Inject() extends AuthInfoMap[OAuth1Info]
+
+class PasswordInfoMap @Inject() extends AuthInfoMap[PasswordInfo]
+
+class OpenIDInfoMap @Inject() extends AuthInfoMap[OpenIDInfo]
 
 /**
  * Created by rp on 15. 07. 14..
  */
 trait AuthInfoMap [T <: com.mohiva.play.silhouette.api.AuthInfo] extends DelegableAuthInfoDAO[T]  {
+
+  private var infoMap = Map.empty[LoginInfo, T]
+
+  /**
+   * Saves the auth info for the given login info.
+   *
+   * This method either adds the auth info if it doesn't exists or it updates the auth info
+   * if it already exists.
+   *
+   * @param loginInfo The login info for which the auth info should be saved.
+   * @param authInfo The auth info to save.
+   * @return The saved auth info.
+   */
+  def save(loginInfo: LoginInfo, authInfo: T): Future[T] = {
+    find(loginInfo).flatMap {
+      case Some(_) => update(loginInfo, authInfo)
+      case None => add(loginInfo, authInfo)
+    }
+  }
 
   /**
    * Finds the auth info which is linked with the specified login info.
@@ -54,23 +79,6 @@ trait AuthInfoMap [T <: com.mohiva.play.silhouette.api.AuthInfo] extends Delegab
   }
 
   /**
-   * Saves the auth info for the given login info.
-   *
-   * This method either adds the auth info if it doesn't exists or it updates the auth info
-   * if it already exists.
-   *
-   * @param loginInfo The login info for which the auth info should be saved.
-   * @param authInfo The auth info to save.
-   * @return The saved auth info.
-   */
-  def save(loginInfo: LoginInfo, authInfo: T): Future[T] = {
-    find(loginInfo).flatMap {
-      case Some(_) => update(loginInfo, authInfo)
-      case None => add(loginInfo, authInfo)
-    }
-  }
-
-  /**
    * Removes the auth info for the given login info.
    *
    * @param loginInfo The login info for which the auth info should be removed.
@@ -80,6 +88,4 @@ trait AuthInfoMap [T <: com.mohiva.play.silhouette.api.AuthInfo] extends Delegab
     infoMap -= loginInfo
     Future.successful(())
   }
-
-  private var infoMap = Map.empty[LoginInfo, T]
 }

@@ -1,11 +1,11 @@
-@import play.api.data.Form
 @import forms.SignUpForm
+@import play.api.data.Form
 @import views.html.helper
 
 @(form: Form[SignUpForm.Data])(implicit request: RequestHeader, messages: Messages)
 
 
-@main("Silhouette - Sign Up") {
+@layout.default("Silhouette - Sign Up") {
     @request.flash.get("error").map { msg =>
         <div class="col-md-6 col-md-offset-3 alert alert-danger alert-error">
             <a href="#" class="close" data-dismiss="alert">&times;</a>
@@ -14,7 +14,7 @@
     }
     <fieldset class="col-md-6 col-md-offset-3">
         <legend>Sign up for a new account</legend>
-        @helper.form(action = routes.Application.signUp()) {
+        @helper.form(action = controllers.authentication.routes.SignUpController.signUp()) {
             @helper.inputText(form("firstName"), '_hiddenLabel -> "First name", 'placeholder -> "First name", 'class -> "form-control input-lg")
             @helper.inputText(form("lastName"), '_hiddenLabel -> "Last name", 'placeholder -> "Last name", 'class -> "form-control input-lg")
             @helper.inputText(form("email"), '_hiddenLabel -> "Email", 'placeholder -> "Email", 'class -> "form-control input-lg")
