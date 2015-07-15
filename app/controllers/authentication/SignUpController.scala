@@ -9,11 +9,12 @@ import com.mohiva.play.silhouette.api.services.AuthenticatorResult
 import com.mohiva.play.silhouette.api.util.PasswordHasher
 import com.mohiva.play.silhouette.impl.authenticators.CookieAuthenticator
 import com.mohiva.play.silhouette.impl.providers.CredentialsProvider
+import controllers.SilhouetteTestController
 import forms.SignUpForm
 import forms.SignUpForm.Data
 import models.TestUser
 import models.services.TestUserService
-import play.api.i18n.{I18nSupport, MessagesApi}
+import play.api.i18n.MessagesApi
 import play.api.mvc._
 import views.html._
 
@@ -23,7 +24,7 @@ import scala.concurrent.Future
 /**
  * Created by rp on 15. 07. 15..
  */
-class SignUpController @Inject()(val messagesApi: MessagesApi, passwordHasher: PasswordHasher, userService: TestUserService, authInfoRepository: AuthInfoRepository)(implicit val env: Environment[TestUser, CookieAuthenticator]) extends Silhouette[TestUser, CookieAuthenticator] with I18nSupport {
+class SignUpController @Inject()(passwordHasher: PasswordHasher, userService: TestUserService, authInfoRepository: AuthInfoRepository)(implicit val env: Environment[TestUser, CookieAuthenticator], val messagesApi: MessagesApi) extends SilhouetteTestController {
   def signUpPage = UserAwareAction { implicit request =>
     request.identity match {
       case Some(user) => Redirect(controllers.routes.Application.index)
@@ -42,10 +43,7 @@ class SignUpController @Inject()(val messagesApi: MessagesApi, passwordHasher: P
       data => {
         val loginInfo = LoginInfo(CredentialsProvider.ID, data.email)
         userService.retrieve(loginInfo).flatMap {
-          case Some(user) => Future.successful {
-
-            BadRequest(pages.authentication.signUp(SignUpForm.form.fill(data).withError("email", "user.exists")))
-          }
+          case Some(user) => Future.successful(BadRequest(pages.authentication.signUp(SignUpForm.form.fill(data).withError("email", "user.exists"))))
           case None => doSignUp(data, loginInfo)
         }
       }

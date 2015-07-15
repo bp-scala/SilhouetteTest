@@ -8,23 +8,16 @@ import com.mohiva.play.silhouette.api.util.PasswordHasher
 import com.mohiva.play.silhouette.impl.authenticators.CookieAuthenticator
 import models.TestUser
 import models.services.TestUserService
-import play.api.i18n.{I18nSupport, MessagesApi}
-import play.api.mvc._
+import play.api.i18n.MessagesApi
 import views.html._
 
-class Application @Inject()(val messagesApi: MessagesApi, passwordHasher: PasswordHasher, userService: TestUserService, authInfoRepository: AuthInfoRepository)(implicit val env: Environment[TestUser, CookieAuthenticator]) extends Silhouette[TestUser, CookieAuthenticator] with I18nSupport {
+class Application @Inject()(passwordHasher: PasswordHasher, userService: TestUserService, authInfoRepository: AuthInfoRepository)(implicit val env: Environment[TestUser, CookieAuthenticator], val messagesApi: MessagesApi) extends SilhouetteTestController {
   def index = UserAwareAction { implicit request =>
     Ok(pages.index("Your new application is ready."))
   }
 
   def secured = SecuredAction { implicit request =>
     Ok(pages.secured("Your secured new application is ready."))
-  }
-
-  protected implicit def currentUser(implicit request: Request[AnyContent]): Option[TestUser] = request match {
-    case userAware: UserAwareRequest[TestUser] => userAware.identity
-    case secured: SecuredRequest[TestUser] => Some(secured.identity)
-    case _ => None
   }
 
 }
