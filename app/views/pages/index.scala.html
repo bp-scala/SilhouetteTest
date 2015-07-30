@@ -1,15 +1,16 @@
 @(message: String)(implicit userOption: Option[TestUser])
 
-    @layout.default("Welcome to Play") {
+@layout.default("Silhouette test application") {
     <h1>@message</h1>
         <p>
             <a href="@routes.Application.secured">go to secured content</a>
             @userOption match {
                 case Some(user) => {
-                    <a href="@authentication.routes.SignOutController.signOut">sign out @user.loginInfo.providerKey</a>
+                    <a href="@authentication.routes.AuthenticationController.signOut">sign out @user.loginInfo.providerKey</a>
                 }
                 case None => {
-                    <a href="@authentication.routes.SignUpController.signUpPage">sign up</a>
+                    <a href="@authentication.routes.AuthenticationController.signUpPage">sign up</a>
+                    <a href="@authentication.routes.AuthenticationController.signInPage">sign in</a>
                 }
             }
         </p>

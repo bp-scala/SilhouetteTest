@@ -4,14 +4,15 @@ version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.11.7"
 
 libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
-  "com.mohiva" %% "play-silhouette" % "3.0.0-RC2",
-  "net.codingwell" %% "scala-guice" % "4.0.0-beta4",
+  "com.mohiva" %% "play-silhouette" % "3.0.0",
+  "com.mohiva" %% "play-silhouette-testkit" % "3.0.0" % "test",
+  "net.codingwell" %% "scala-guice" % "4.0.0",
   "net.ceedubs" %% "ficus" % "1.1.2",
   specs2 % Test
 )

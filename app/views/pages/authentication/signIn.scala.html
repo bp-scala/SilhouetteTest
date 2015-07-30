@@ -1,0 +1,47 @@
+@import com.mohiva.play.silhouette.impl.providers.SocialProviderRegistry
+@import forms.SignInForm
+@import play.api.data.Form
+@import views.html.helper
+
+@(signInForm: Form[SignInForm.Data], socialProviders: SocialProviderRegistry)(implicit request: RequestHeader, messages: Messages)
+
+    @layout.default("Silhouette - Sign In") {
+        @request.flash.get("error").map { msg =>
+            <div class="alert alert-danger alert-error">
+                <a href="#" class="close" data-dismiss="alert">&times;</a>
+                <strong>Error!</strong> @msg
+            </div>
+        }
+        <fieldset>
+            <legend>Sign in with your credentials</legend>
+            @helper.form(action = controllers.authentication.routes.AuthenticationController.signInWithCredentials()) {
+                @helper.inputText(signInForm("email"), '_hiddenLabel -> "Email", 'placeholder -> "Email", 'class -> "form-control input-lg")
+                @helper.inputPassword(signInForm("password"), '_hiddenLabel -> "Password", 'placeholder -> "Password", 'class -> "form-control input-lg")
+                @helper.checkbox(signInForm("rememberMe"), '_text -> "Remember my login on this computer", 'checked -> true)
+                <div class="form-group">
+                    <div>
+                        <button id="submit" type="submit" value="submit" class="btn btn-lg btn-primary btn-block">
+                            Submit</button>
+                    </div>
+                </div>
+            }
+
+            <div>
+                <p class="not-a-member">
+                    Not a member? <a href="@controllers.authentication.routes.AuthenticationController.signUp">
+                    Sign up now</a></p>
+            </div>
+
+            @if(socialProviders.providers.nonEmpty) {
+                <div class="social-providers">
+                    <p>Or use your existing account on one of the following services to sign in:</p>
+                    <div>
+                    @for(p <- socialProviders.providers) {
+                        <a href="@controllers.authentication.routes.AuthenticationController.signInWithSocialProvider(p.id)" class="provider @p.id">@p.id</a>
+                    }
+                    </div>
+                </div>
+            }
+
+        </fieldset>
+    }

@@ -13,11 +13,10 @@ import views.html._
 
 class Application @Inject()(passwordHasher: PasswordHasher, userService: TestUserService, authInfoRepository: AuthInfoRepository)(implicit val env: Environment[TestUser, CookieAuthenticator], val messagesApi: MessagesApi) extends SilhouetteTestController {
   def index = UserAwareAction { implicit request =>
-    Ok(pages.index("Your new application is ready."))
+    Ok(pages.index("This is an unsecured page."))
   }
 
   def secured = SecuredAction { implicit request =>
-    Ok(pages.secured("Your secured new application is ready."))
+    Ok(pages.secured("This is a secured page."))
   }
-
 }

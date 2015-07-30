@@ -8,27 +8,25 @@ import com.mohiva.play.silhouette.api.{Environment, EventBus}
 import com.mohiva.play.silhouette.impl.authenticators.{CookieAuthenticator, CookieAuthenticatorService, CookieAuthenticatorSettings}
 import com.mohiva.play.silhouette.impl.daos.DelegableAuthInfoDAO
 import com.mohiva.play.silhouette.impl.providers._
+import com.mohiva.play.silhouette.impl.providers.oauth1.TwitterProvider
 import com.mohiva.play.silhouette.impl.providers.oauth1.secrets.{CookieSecretProvider, CookieSecretSettings}
 import com.mohiva.play.silhouette.impl.providers.oauth1.services.PlayOAuth1Service
-import com.mohiva.play.silhouette.impl.providers.oauth1.{TwitterProvider, XingProvider}
-import com.mohiva.play.silhouette.impl.providers.oauth2.state.{CookieStateProvider, CookieStateSettings, DummyStateProvider}
-import com.mohiva.play.silhouette.impl.providers.oauth2.{ClefProvider, FacebookProvider, GoogleProvider, VKProvider}
-import com.mohiva.play.silhouette.impl.providers.openid.YahooProvider
-import com.mohiva.play.silhouette.impl.providers.openid.services.PlayOpenIDService
+import com.mohiva.play.silhouette.impl.providers.oauth2._
+import com.mohiva.play.silhouette.impl.providers.oauth2.state.{CookieStateProvider, CookieStateSettings}
 import com.mohiva.play.silhouette.impl.repositories.DelegableAuthInfoRepository
 import com.mohiva.play.silhouette.impl.services.GravatarService
 import com.mohiva.play.silhouette.impl.util.{BCryptPasswordHasher, DefaultFingerprintGenerator, PlayCacheLayer, SecureRandomIDGenerator}
 import models.TestUser
+import models.providers.oauth2.StackExchangeProvider
 import models.services.TestUserService
 import models.services.impl.map._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.codingwell.scalaguice.ScalaModule
 import play.api.Configuration
-import play.api.libs.openid.OpenIdClient
 import play.api.libs.ws.WSClient
+
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.ExecutionContext
 
 /**
  * The Guice module which wires all Silhouette dependencies.
@@ -75,44 +73,30 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
     authenticatorService: AuthenticatorService[CookieAuthenticator],
     eventBus: EventBus): Environment[TestUser, CookieAuthenticator] = {
 
-    Environment[TestUser, CookieAuthenticator](
-      userService,
-      authenticatorService,
-      Seq(),
-      eventBus
-    )
+    Environment(userService, authenticatorService, Seq(), eventBus)
   }
 
   /**
-   * Provides the social provider registry.
+   * Provides the social provider registry
    *
-   * @param facebookProvider The Facebook provider implementation.
-   * @param googleProvider The Google provider implementation.
-   * @param vkProvider The VK provider implementation.
-   * @param clefProvider The Clef provider implementation.
-   * @param twitterProvider The Twitter provider implementation.
-   * @param xingProvider The Xing provider implementation.
-   * @param yahooProvider The Yahoo provider implementation.
-   * @return The Silhouette environment.
+   * @param googleProvider
+   * @param stackExchangeProvider
+   * @param gitHubProvider
+   * @param twitterProvider
+   * @return
    */
   @Provides
   def provideSocialProviderRegistry(
-    facebookProvider: FacebookProvider,
     googleProvider: GoogleProvider,
-    vkProvider: VKProvider,
-    clefProvider: ClefProvider,
-    twitterProvider: TwitterProvider,
-    xingProvider: XingProvider,
-    yahooProvider: YahooProvider): SocialProviderRegistry = {
+    stackExchangeProvider: StackExchangeProvider,
+    gitHubProvider: GitHubProvider,
+    twitterProvider: TwitterProvider): SocialProviderRegistry = {
 
     SocialProviderRegistry(Seq(
-      googleProvider,
-      facebookProvider,
+      stackExchangeProvider,
+      gitHubProvider,
       twitterProvider,
-      vkProvider,
-      xingProvider,
-      yahooProvider,
-      clefProvider
+      googleProvider
     ))
   }
 
@@ -132,8 +116,8 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
     configuration: Configuration,
     clock: Clock): AuthenticatorService[CookieAuthenticator] = {
 
-    val config = configuration.underlying.as[CookieAuthenticatorSettings]("silhouette.authenticator")
-    new CookieAuthenticatorService(config, None, fingerprintGenerator, idGenerator, clock)
+    val settings = configuration.underlying.as[CookieAuthenticatorSettings]("silhouette.authenticator")
+    new CookieAuthenticatorService(settings, None, fingerprintGenerator, idGenerator, clock)
   }
 
   /**
@@ -200,15 +184,12 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * @return The credentials provider.
    */
   @Provides
-  def provideCredentialsProvider(
-    authInfoRepository: AuthInfoRepository,
-    passwordHasher: PasswordHasher): CredentialsProvider = {
-
+  def provideCredentialsProvider(authInfoRepository: AuthInfoRepository, passwordHasher: PasswordHasher): CredentialsProvider = {
     new CredentialsProvider(authInfoRepository, passwordHasher, Seq(passwordHasher))
   }
 
   /**
-   * Provides the Facebook provider.
+   * Provides the Stack Exchange provider.
    *
    * @param httpLayer The HTTP layer implementation.
    * @param stateProvider The OAuth2 state provider implementation.
@@ -216,12 +197,24 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * @return The Facebook provider.
    */
   @Provides
-  def provideFacebookProvider(
-    httpLayer: HTTPLayer,
-    stateProvider: OAuth2StateProvider,
-    configuration: Configuration): FacebookProvider = {
+  def provideStackExchangeProvider(httpLayer: HTTPLayer, configuration: Configuration, stateProvider: OAuth2StateProvider): StackExchangeProvider = {
+    val settings = configuration.underlying.as[OAuth2Settings]("silhouette.stackexchange")
+    new StackExchangeProvider(httpLayer, stateProvider, settings)
+  }
 
-    new FacebookProvider(httpLayer, stateProvider, configuration.underlying.as[OAuth2Settings]("silhouette.facebook"))
+
+  /**
+   * Provides the GitHub provider.
+   *
+   * @param httpLayer The HTTP layer implementation.
+   * @param stateProvider The OAuth2 state provider implementation.
+   * @param configuration The Play configuration.
+   * @return The Facebook provider.
+   */
+  @Provides
+  def provideGitHubProvider(httpLayer: HTTPLayer, configuration: Configuration, stateProvider: OAuth2StateProvider): GitHubProvider = {
+    val settings = configuration.underlying.as[OAuth2Settings]("silhouette.github")
+    new GitHubProvider(httpLayer, stateProvider, settings)
   }
 
   /**
@@ -233,42 +226,9 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * @return The Google provider.
    */
   @Provides
-  def provideGoogleProvider(
-    httpLayer: HTTPLayer,
-    stateProvider: OAuth2StateProvider,
-    configuration: Configuration): GoogleProvider = {
-
-    new GoogleProvider(httpLayer, stateProvider, configuration.underlying.as[OAuth2Settings]("silhouette.google"))
-  }
-
-  /**
-   * Provides the VK provider.
-   *
-   * @param httpLayer The HTTP layer implementation.
-   * @param stateProvider The OAuth2 state provider implementation.
-   * @param configuration The Play configuration.
-   * @return The VK provider.
-   */
-  @Provides
-  def provideVKProvider(
-    httpLayer: HTTPLayer,
-    stateProvider: OAuth2StateProvider,
-    configuration: Configuration): VKProvider = {
-
-    new VKProvider(httpLayer, stateProvider, configuration.underlying.as[OAuth2Settings]("silhouette.vk"))
-  }
-
-  /**
-   * Provides the Clef provider.
-   *
-   * @param httpLayer The HTTP layer implementation.
-   * @param configuration The Play configuration.
-   * @return The Clef provider.
-   */
-  @Provides
-  def provideClefProvider(httpLayer: HTTPLayer, configuration: Configuration): ClefProvider = {
-
-    new ClefProvider(httpLayer, new DummyStateProvider, configuration.underlying.as[OAuth2Settings]("silhouette.clef"))
+  def provideGoogleProvider(httpLayer: HTTPLayer, configuration: Configuration, stateProvider: OAuth2StateProvider): GoogleProvider = {
+    val settings = configuration.underlying.as[OAuth2Settings]("silhouette.google")
+    new GoogleProvider(httpLayer, stateProvider, settings)
   }
 
   /**
@@ -280,50 +240,8 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * @return The Twitter provider.
    */
   @Provides
-  def provideTwitterProvider(
-    httpLayer: HTTPLayer,
-    tokenSecretProvider: OAuth1TokenSecretProvider,
-    configuration: Configuration): TwitterProvider = {
-
+  def provideTwitterProvider(httpLayer: HTTPLayer, configuration: Configuration, tokenSecretProvider: OAuth1TokenSecretProvider): TwitterProvider = {
     val settings = configuration.underlying.as[OAuth1Settings]("silhouette.twitter")
     new TwitterProvider(httpLayer, new PlayOAuth1Service(settings), tokenSecretProvider, settings)
-  }
-
-  /**
-   * Provides the Xing provider.
-   *
-   * @param httpLayer The HTTP layer implementation.
-   * @param tokenSecretProvider The token secret provider implementation.
-   * @param configuration The Play configuration.
-   * @return The Xing provider.
-   */
-  @Provides
-  def provideXingProvider(
-    httpLayer: HTTPLayer,
-    tokenSecretProvider: OAuth1TokenSecretProvider,
-    configuration: Configuration): XingProvider = {
-
-    val settings = configuration.underlying.as[OAuth1Settings]("silhouette.xing")
-    new XingProvider(httpLayer, new PlayOAuth1Service(settings), tokenSecretProvider, settings)
-  }
-
-  /**
-   * Provides the Yahoo provider.
-   *
-   * @param cacheLayer The cache layer implementation.
-   * @param httpLayer The HTTP layer implementation.
-   * @param client The OpenID client implementation.
-   * @param configuration The Play configuration.
-   * @return The Yahoo provider.
-   */
-  @Provides
-  def provideYahooProvider(
-    cacheLayer: CacheLayer,
-    httpLayer: HTTPLayer,
-    client: OpenIdClient,
-    configuration: Configuration): YahooProvider = {
-
-    val settings = configuration.underlying.as[OpenIDSettings]("silhouette.yahoo")
-    new YahooProvider(httpLayer, new PlayOpenIDService(client, settings), settings)
   }
 }
