@@ -1,9 +1,5 @@
 package forms
 
-/**
- * Created by rp on 15. 07. 14..
- */
-
 import play.api.data.Form
 import play.api.data.Forms._
 
@@ -17,25 +13,25 @@ object SignUpForm {
    */
   val form = Form(
     mapping(
-      "firstName" -> nonEmptyText,
-      "lastName" -> nonEmptyText,
+      "displayName" -> text,
       "email" -> email,
-      "password" -> nonEmptyText
+      "password" -> nonEmptyText,
+      "fullName" -> optional(text),
+      "avatarURL" -> optional(text)
     )(Data.apply)(Data.unapply)
   )
 
   /**
    * The form data.
    *
-   * @param firstName The first name of a user.
-   * @param lastName The last name of a user.
+   * @param fullName The full name of a user.
    * @param email The email of the user.
    * @param password The password of the user.
    */
   case class Data(
-    firstName: String,
-    lastName: String,
+    displayName: String,
     email: String,
-    password: String)
-
+    password: String,
+    fullName: Option[String],
+    avatarURL: Option[String])
 }

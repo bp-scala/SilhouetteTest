@@ -1,5 +1,7 @@
 package modules
 
+import javax.sql.DataSource
+
 import com.google.inject.{AbstractModule, Provides}
 import com.mohiva.play.silhouette.api.repositories.AuthInfoRepository
 import com.mohiva.play.silhouette.api.services.{AuthenticatorService, AvatarService}
@@ -16,10 +18,11 @@ import com.mohiva.play.silhouette.impl.providers.oauth2.state.{CookieStateProvid
 import com.mohiva.play.silhouette.impl.repositories.DelegableAuthInfoRepository
 import com.mohiva.play.silhouette.impl.services.GravatarService
 import com.mohiva.play.silhouette.impl.util.{BCryptPasswordHasher, DefaultFingerprintGenerator, PlayCacheLayer, SecureRandomIDGenerator}
-import models.TestUser
+import com.zaxxer.hikari.HikariDataSource
+import models.User
 import models.providers.oauth2.StackExchangeProvider
-import models.services.TestUserService
-import models.services.impl.map._
+import models.services.UserService
+import models.services.impl.mysql._
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.codingwell.scalaguice.ScalaModule
@@ -37,11 +40,12 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * Configures the module.
    */
   def configure() {
-    bind[DelegableAuthInfoDAO[PasswordInfo]].to[PasswordInfoMap]
-    bind[DelegableAuthInfoDAO[OAuth1Info]].to[OAuth1InfoMap]
-    bind[DelegableAuthInfoDAO[OAuth2Info]].to[OAuth2InfoMap]
-    bind[DelegableAuthInfoDAO[OpenIDInfo]].to[OpenIDInfoMap]
-    bind[TestUserService].to[TestUserMap]
+    bind[UserService].to[MySqlUserDao]
+    bind[DelegableAuthInfoDAO[PasswordInfo]].to[MySqlPasswordInfoDao]
+    bind[DelegableAuthInfoDAO[OAuth1Info]].to[MySqlOAuth1InfoDao]
+    bind[DelegableAuthInfoDAO[OAuth2Info]].to[MySqlOAuth2InfoDao]
+    bind[DelegableAuthInfoDAO[OpenIDInfo]].to[MySqlOpenIDInfoDao]
+    bind[DataSource].to[HikariDataSource]
     bind[CacheLayer].to[PlayCacheLayer]
     bind[IDGenerator].toInstance(new SecureRandomIDGenerator())
     bind[PasswordHasher].toInstance(new BCryptPasswordHasher)
@@ -69,9 +73,9 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    */
   @Provides
   def provideEnvironment(
-    userService: TestUserService,
+    userService: UserService,
     authenticatorService: AuthenticatorService[CookieAuthenticator],
-    eventBus: EventBus): Environment[TestUser, CookieAuthenticator] = {
+    eventBus: EventBus): Environment[User, CookieAuthenticator] = {
 
     Environment(userService, authenticatorService, Seq(), eventBus)
   }
@@ -79,10 +83,10 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
   /**
    * Provides the social provider registry
    *
-   * @param googleProvider
-   * @param stackExchangeProvider
-   * @param gitHubProvider
-   * @param twitterProvider
+   * @param googleProvider Google OAuth provider
+   * @param stackExchangeProvider Stack Exchange OAuth provider
+   * @param gitHubProvider GitHub OAuth provider
+   * @param twitterProvider Twitter OAuth provider
    * @return
    */
   @Provides

@@ -1,4 +1,4 @@
-@(message: String)(implicit userOption: Option[TestUser])
+@(message: String)(implicit userOption: Option[User])
 
 @layout.default("Silhouette test application") {
     <h1>@message</h1>
@@ -6,7 +6,7 @@
             <a href="@routes.Application.secured">go to secured content</a>
             @userOption match {
                 case Some(user) => {
-                    <a href="@authentication.routes.AuthenticationController.signOut">sign out @user.loginInfo.providerKey</a>
+                    <a href="@authentication.routes.AuthenticationController.signOut">sign out @user.displayName</a>
                 }
                 case None => {
                     <a href="@authentication.routes.AuthenticationController.signUpPage">sign up</a>

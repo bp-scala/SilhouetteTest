@@ -1,6 +1,5 @@
 package controllers.authentication
 
-import java.util.UUID
 import javax.inject.Inject
 
 import com.mohiva.play.silhouette.api.Authenticator.Implicits._
@@ -9,12 +8,12 @@ import com.mohiva.play.silhouette.api.exceptions.ProviderException
 import com.mohiva.play.silhouette.api.repositories.AuthInfoRepository
 import com.mohiva.play.silhouette.api.util.{Clock, Credentials, PasswordHasher}
 import com.mohiva.play.silhouette.impl.authenticators.CookieAuthenticator
-import com.mohiva.play.silhouette.impl.exceptions.IdentityNotFoundException
 import com.mohiva.play.silhouette.impl.providers._
 import controllers.SilhouetteTestController
 import forms.{SignInForm, SignUpForm}
-import models.TestUser
-import models.services.TestUserService
+import models.User
+import models.services.{UserExists, UserService}
+import models.util.SlugGenerator.SlugifiableString
 import net.ceedubs.ficus.Ficus._
 import play.api.Configuration
 import play.api.i18n.{Messages, MessagesApi}
@@ -25,15 +24,16 @@ import views.html._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import scala.util.Success
 
 class AuthenticationController @Inject()(
-  userService: TestUserService,
+  userService: UserService,
   passwordHasher: PasswordHasher,
   authInfoRepository: AuthInfoRepository,
   credentialsProvider: CredentialsProvider,
   socialProviderRegistry: SocialProviderRegistry,
   configuration: Configuration,
-  clock: Clock)(implicit val env: Environment[TestUser, CookieAuthenticator], val messagesApi: MessagesApi) extends SilhouetteTestController {
+  clock: Clock)(implicit val env: Environment[User, CookieAuthenticator], val messagesApi: MessagesApi) extends SilhouetteTestController {
 
   // TODO move this to module
   private val c = configuration.underlying
@@ -50,7 +50,7 @@ class AuthenticationController @Inject()(
 
   def signUpPage = UserAwareAction { implicit request =>
     request.identity match {
-      case Some(user) => Redirect(controllers.routes.Application.index)
+      case Some(user) => Redirect(controllers.routes.Application.index())
       case None => Ok(pages.authentication.signUp(SignUpForm.form))
     }
   }
@@ -61,9 +61,13 @@ class AuthenticationController @Inject()(
    * @return The result to display.
    */
   def signOut = SecuredAction.async { implicit request =>
-    val result = Redirect(controllers.routes.Application.index())
-    env.eventBus.publish(LogoutEvent(request.identity, request, request2Messages))
-    env.authenticatorService.discard(request.authenticator, result)
+    doSignOut(Redirect(controllers.routes.Application.index()))
+  }
+
+  private def doSignOut(result: => Result)(implicit request: SecuredRequest[AnyContent]): Future[Result] = {
+    env.authenticatorService.discard(request.authenticator, result) andThen {
+      case Success(_) => env.eventBus.publish(LogoutEvent(request.identity, request, request2Messages))
+    }
   }
 
   /**
@@ -74,35 +78,31 @@ class AuthenticationController @Inject()(
   def signUp = Action.async { implicit request =>
     SignUpForm.form.bindFromRequest.fold(
       form => Future.successful(BadRequest(pages.authentication.signUp(form))),
-      data => {
-        doSignUp(data) flatMap { cookie =>
-          val result = Redirect(controllers.routes.Application.index)
-          env.authenticatorService.embed(cookie, result)
-        } recover {
-          case userExists: UserExists =>
-            BadRequest(pages.authentication.signUp(SignUpForm.form.fill(data).withError("email", "user.exists")))
-        }
+      data => doSignUp(data, Redirect(controllers.routes.Application.index())) recover {
+        case userExists: UserExists =>
+          BadRequest(pages.authentication.signUp(SignUpForm.form.fill(data).withError("email", "user.exists")))
       }
     )
   }
 
-  private def doSignUp(data: SignUpForm.Data)(implicit request: Request[AnyContent]): Future[Cookie] = for {
-    user <- saveUser(data)
-    cookie <- login(user, rememberMe = false)
-  } yield cookie
+  private def doSignUp(data: SignUpForm.Data, result: => Result)(implicit request: Request[AnyContent]): Future[Result] = {
+    val loginInfo = LoginInfo(CredentialsProvider.ID, data.email)
+    val userData = User(0, data.displayName, data.email, data.avatarURL, data.fullName)
 
-  private def saveUser(signUpData: SignUpForm.Data)(implicit request: Request[AnyContent]) = {
-    val loginInfo = LoginInfo(CredentialsProvider.ID, signUpData.email)
-    userService.retrieve(loginInfo) flatMap {
-      case Some(user) => throw new UserExists(user)
-      case None => for {
-        user <- userService.save(TestUser(id = UUID.randomUUID(), loginInfo = loginInfo))
-        authInfo <- authInfoRepository.add(loginInfo, passwordHasher.hash(signUpData.password))
-      } yield {
-          env.eventBus.publish(SignUpEvent(user, request, request2Messages))
-          user
-        }
-    }
+    for {
+      user <- createUser(loginInfo, userData, data.password)
+      cookie <- authenticate(loginInfo, user, rememberMe = false)
+      result <- env.authenticatorService.embed(cookie, result)
+    } yield result
+  }
+
+  private def createUser(loginInfo: LoginInfo, user: User, password: String)(implicit request: Request[AnyContent]) = {
+    for {
+      user <- userService.create(loginInfo, user)
+      authInfo <- authInfoRepository.add(loginInfo, passwordHasher.hash(password))
+    } yield user
+  } andThen {
+    case Success(user) => env.eventBus.publish(SignUpEvent(user, request, request2Messages))
   }
 
   /**
@@ -113,33 +113,22 @@ class AuthenticationController @Inject()(
   def signInWithCredentials = Action.async { implicit request =>
     SignInForm.form.bindFromRequest.fold(
       form => Future.successful(BadRequest(pages.authentication.signIn(form, socialProviderRegistry))),
-      data => doSignIn(data) flatMap { cookie =>
-        val result = Redirect(controllers.routes.Application.index())
-        env.authenticatorService.embed(cookie, result)
-      } recover {
+      data => doSignIn(data, Redirect(controllers.routes.Application.index())) recover {
         case providerException: ProviderException =>
           BadRequest(pages.authentication.signIn(SignInForm.form.fill(data).withGlobalError(Messages("invalid.credentials")), socialProviderRegistry))
       }
     )
   }
 
-  private def doSignIn(data: SignInForm.Data)(implicit request: Request[AnyContent]): Future[Cookie] = for {
-    user <- retrieveUser(data)
-    cookie <- login(user, data.rememberMe)
-  } yield cookie
-
-  private def retrieveUser(data: SignInForm.Data) = for {
+  private def doSignIn(data: SignInForm.Data, result: => Result)(implicit request: Request[AnyContent]): Future[Result] = for {
     loginInfo <- credentialsProvider.authenticate(Credentials(data.email, data.password))
-    maybeUser <- userService.retrieve(loginInfo)
-  } yield {
-      maybeUser match {
-        case Some(user) => user
-        case None => throw new IdentityNotFoundException("Couldn't find user")
-      }
-    }
+    user <- userService(loginInfo)
+    cookie <- authenticate(loginInfo, user, data.rememberMe)
+    result <- env.authenticatorService.embed(cookie, result)
+  } yield result
 
-  private def login(user: TestUser, rememberMe: Boolean)(implicit request: Request[AnyContent]): Future[Cookie] = for {
-    authenticator <- env.authenticatorService.create(user.loginInfo) map remember(rememberMe)
+  private def authenticate(loginInfo: LoginInfo, user: User, rememberMe: Boolean)(implicit request: Request[AnyContent]): Future[Cookie] = for {
+    authenticator <- env.authenticatorService.create(loginInfo) map remember(rememberMe)
     cookie <- env.authenticatorService.init(authenticator)
   } yield {
       env.eventBus.publish(LoginEvent(user, request, request2Messages))
@@ -162,34 +151,42 @@ class AuthenticationController @Inject()(
    * @return The result to display.
    */
   def signInWithSocialProvider(provider: String) = Action.async { implicit request =>
-    (socialProviderRegistry.get[SocialProvider](provider) match {
+    socialProviderRegistry.get[SocialProvider](provider) match {
       case Some(provider: SocialProvider with CommonSocialProfileBuilder) =>
         provider.authenticate().flatMap {
           case Left(result) => Future.successful(result)
-          case Right(authInfo) => doSignIn(provider)(authInfo) flatMap { cookie =>
-            val result = Redirect(controllers.routes.Application.index())
-            env.authenticatorService.embed(cookie, result)
+          case Right(authInfo) => doSignIn(provider)(authInfo, Redirect(controllers.routes.Application.index())) recover {
+            case e: ProviderException =>
+              logger.error("Unexpected provider error", e)
+              Redirect(routes.AuthenticationController.signInPage()).flashing("error" -> Messages("could.not.authenticate"))
           }
         }
-      case _ => Future.failed(new ProviderException(s"Cannot authenticate with unexpected social provider $provider"))
-    }).recover {
-      case e: ProviderException =>
-        logger.error("Unexpected provider error", e)
-        Redirect(routes.AuthenticationController.signInPage()).flashing("error" -> Messages("could.not.authenticate"))
+      case _ =>
+        logger.error("Unable to sign in", new ProviderException(s"Unknown provider $provider"))
+        Future.successful(Redirect(routes.AuthenticationController.signInPage()).flashing("error" -> Messages("could.not.authenticate")))
     }
   }
 
-  private def doSignIn(provider: SocialProvider with CommonSocialProfileBuilder)(authInfo: provider.A)(implicit request: Request[AnyContent]): Future[Cookie] = for {
-    user <- saveUser(provider)(authInfo)
-    cookie <- login(user, rememberMe = false)
-  } yield cookie
+  private def doSignIn(provider: SocialProvider with CommonSocialProfileBuilder)(authInfo: provider.A, result: Result)(implicit request: Request[AnyContent]): Future[Result] = {
+    for {
+      profile: CommonSocialProfile <- provider.retrieveProfile(authInfo)
+      user <- createOrUpdateUser(profile, authInfo)
+      cookie <- authenticate(profile.loginInfo, user, rememberMe = false)
+      result <- env.authenticatorService.embed(cookie, result)
+    } yield result
+  }
 
-  private def saveUser(provider: SocialProvider with CommonSocialProfileBuilder)(authInfo: provider.A) = for {
-    profile: CommonSocialProfile <- provider.retrieveProfile(authInfo)
-    user: TestUser <- userService.save(profile)
-    authInfo <- authInfoRepository.save(profile.loginInfo, authInfo)
-  } yield user
-
+  private def createOrUpdateUser(profile: CommonSocialProfile, authInfo: AuthInfo) = {
+    val displayName = (profile.fullName getOrElse profile.loginInfo.providerKey).slugify
+    val email = profile.email getOrElse s"$displayName@samebug.io"
+    val userData = User(0,
+      displayName = displayName,
+      email = email,
+      avatarURL = profile.avatarURL, fullName = profile.fullName)
+    for {
+      authInfo <- authInfoRepository.save(profile.loginInfo, authInfo)
+      user: User <- userService.createOrUpdate(profile.loginInfo, userData)
+    } yield user
+  }
 }
 
-case class UserExists(user: TestUser) extends scala.Exception(s"User exists: ${user.loginInfo.providerID}/${user.loginInfo.providerKey}")

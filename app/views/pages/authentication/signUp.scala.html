@@ -15,10 +15,11 @@
     <fieldset>
         <legend>Sign up for a new account</legend>
         @helper.form(action = controllers.authentication.routes.AuthenticationController.signUp()) {
-            @helper.inputText(form("firstName"), '_hiddenLabel -> "First name", 'placeholder -> "First name", 'class -> "form-control input-lg")
-            @helper.inputText(form("lastName"), '_hiddenLabel -> "Last name", 'placeholder -> "Last name", 'class -> "form-control input-lg")
+            @helper.inputText(form("displayName"), '_hiddenLabel -> "Display name", 'placeholder -> "Display name", 'class -> "form-control input-lg")
             @helper.inputText(form("email"), '_hiddenLabel -> "Email", 'placeholder -> "Email", 'class -> "form-control input-lg")
             @helper.inputPassword(form("password"), '_hiddenLabel -> "Password", 'placeholder -> "Password", 'class -> "form-control input-lg")
+            @helper.inputText(form("fullName"), '_hiddenLabel -> "Full name", 'placeholder -> "Full name", 'class -> "form-control input-lg")
+            @helper.inputText(form("avatarURL"), '_hiddenLabel -> "Avatar URL", 'placeholder -> "Avatar URL", 'class -> "form-control input-lg")
             <div class="form-group">
                 <div>
                     <button id="submit" type="submit" value="submit" class="btn btn-lg btn-primary btn-block">Submit</button>
