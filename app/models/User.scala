@@ -4,7 +4,7 @@ import com.mohiva.play.silhouette.api.Identity
 
 case class User(
   id: Long,
-  displayName: String,
-  email: String,
-  avatarURL: Option[String],
-  fullName: Option[String]) extends Identity
+  displayName: Option[String],
+  email: Option[String],
+  realName: Option[String],
+  avatarURL: Option[String]) extends Identity

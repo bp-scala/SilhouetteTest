@@ -27,11 +27,11 @@ case class OAuth2InfoRow(providerID: String, providerKey: String, accessToken: S
 class OAuth2InfoTable(tag: Tag) extends AuthInfoTable[OAuth2InfoRow](tag, "oauth2_infos") {
   def * = (providerID, providerKey, accessToken, tokenType, expiresIn, refreshToken) <>(OAuth2InfoRow.tupled, OAuth2InfoRow.unapply)
 
-  def accessToken = column[String]("access_token", O.SqlType("varchar(32)"))
+  def accessToken = column[String]("access_token", O.SqlType("varchar(512)"))
 
   def tokenType = column[Option[String]]("token_type", O.SqlType("varchar(32)"))
 
   def expiresIn = column[Option[Int]]("expires_in")
 
-  def refreshToken = column[Option[String]]("refresh_token", O.SqlType("varchar(32)"))
+  def refreshToken = column[Option[String]]("refresh_token", O.SqlType("varchar(512)"))
 }

@@ -20,16 +20,6 @@ trait UserService extends IdentityService[User] {
   }
 
   def update(updatedUser: User): Future[User]
-
-  final def createOrUpdate(loginInfo: LoginInfo, data: User): Future[User] = retrieve(loginInfo) flatMap {
-    case None => create(loginInfo, data)
-    case Some(user) =>
-      val updatedUser = user.copy(
-        avatarURL = user.avatarURL orElse data.avatarURL,
-        fullName = user.fullName orElse data.fullName
-      )
-      update(updatedUser)
-  }
 }
 
 

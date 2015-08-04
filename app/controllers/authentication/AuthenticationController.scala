@@ -6,6 +6,7 @@ import com.mohiva.play.silhouette.api.Authenticator.Implicits._
 import com.mohiva.play.silhouette.api._
 import com.mohiva.play.silhouette.api.exceptions.ProviderException
 import com.mohiva.play.silhouette.api.repositories.AuthInfoRepository
+import com.mohiva.play.silhouette.api.services.AuthenticatorResult
 import com.mohiva.play.silhouette.api.util.{Clock, Credentials, PasswordHasher}
 import com.mohiva.play.silhouette.impl.authenticators.CookieAuthenticator
 import com.mohiva.play.silhouette.impl.providers._
@@ -13,7 +14,6 @@ import controllers.SilhouetteTestController
 import forms.{SignInForm, SignUpForm}
 import models.User
 import models.services.{UserExists, UserService}
-import models.util.SlugGenerator.SlugifiableString
 import net.ceedubs.ficus.Ficus._
 import play.api.Configuration
 import play.api.i18n.{Messages, MessagesApi}
@@ -85,20 +85,19 @@ class AuthenticationController @Inject()(
     )
   }
 
-  private def doSignUp(data: SignUpForm.Data, result: => Result)(implicit request: Request[AnyContent]): Future[Result] = {
+  private def doSignUp(data: SignUpForm.Data, expecterdResult: => Result)(implicit request: Request[AnyContent]): Future[Result] = {
     val loginInfo = LoginInfo(CredentialsProvider.ID, data.email)
-    val userData = User(0, data.displayName, data.email, data.avatarURL, data.fullName)
+    val userData = User(0, Some(data.displayName), Some(data.email), Some(data.realName), data.avatarURL)
 
     for {
-      user <- createUser(loginInfo, userData, data.password)
-      cookie <- authenticate(loginInfo, user, rememberMe = false)
-      result <- env.authenticatorService.embed(cookie, result)
+      user: User <- createUser(loginInfo, userData, data.password)
+      result <- initAuthenticator(loginInfo, user, rememberMe = false, expecterdResult)
     } yield result
   }
 
-  private def createUser(loginInfo: LoginInfo, user: User, password: String)(implicit request: Request[AnyContent]) = {
+  private def createUser(loginInfo: LoginInfo, userData: User, password: String)(implicit request: Request[AnyContent]) = {
     for {
-      user <- userService.create(loginInfo, user)
+      user <- userService.create(loginInfo, userData)
       authInfo <- authInfoRepository.add(loginInfo, passwordHasher.hash(password))
     } yield user
   } andThen {
@@ -120,29 +119,11 @@ class AuthenticationController @Inject()(
     )
   }
 
-  private def doSignIn(data: SignInForm.Data, result: => Result)(implicit request: Request[AnyContent]): Future[Result] = for {
-    loginInfo <- credentialsProvider.authenticate(Credentials(data.email, data.password))
-    user <- userService(loginInfo)
-    cookie <- authenticate(loginInfo, user, data.rememberMe)
-    result <- env.authenticatorService.embed(cookie, result)
+  private def doSignIn(data: SignInForm.Data, expectedResult: => Result)(implicit request: Request[AnyContent]): Future[Result] = for {
+    loginInfo: LoginInfo <- credentialsProvider.authenticate(Credentials(data.email, data.password))
+    user: User <- userService(loginInfo)
+    result <- initAuthenticator(loginInfo, user, data.rememberMe, expectedResult)
   } yield result
-
-  private def authenticate(loginInfo: LoginInfo, user: User, rememberMe: Boolean)(implicit request: Request[AnyContent]): Future[Cookie] = for {
-    authenticator <- env.authenticatorService.create(loginInfo) map remember(rememberMe)
-    cookie <- env.authenticatorService.init(authenticator)
-  } yield {
-      env.eventBus.publish(LoginEvent(user, request, request2Messages))
-      cookie
-    }
-
-  private def remember(rememberMe: Boolean)(authenticator: CookieAuthenticator): CookieAuthenticator = {
-    if (rememberMe) authenticator.copy(
-      expirationDateTime = clock.now + authenticatorExpiry,
-      idleTimeout = authenticatorIdleTimeout,
-      cookieMaxAge = cookieMaxAge
-    )
-    else authenticator
-  }
 
   /**
    * Authenticates a user against a social provider.
@@ -167,26 +148,41 @@ class AuthenticationController @Inject()(
     }
   }
 
-  private def doSignIn(provider: SocialProvider with CommonSocialProfileBuilder)(authInfo: provider.A, result: Result)(implicit request: Request[AnyContent]): Future[Result] = {
+  private def doSignIn(provider: SocialProvider with CommonSocialProfileBuilder)(authInfo: provider.A, expectedResult: Result)(implicit request: Request[AnyContent]): Future[Result] = {
     for {
       profile: CommonSocialProfile <- provider.retrieveProfile(authInfo)
-      user <- createOrUpdateUser(profile, authInfo)
-      cookie <- authenticate(profile.loginInfo, user, rememberMe = false)
-      result <- env.authenticatorService.embed(cookie, result)
+      user: User <- createOrUpdateUser(profile, authInfo)
+      result <- initAuthenticator(profile.loginInfo, user, rememberMe = false, expectedResult)
     } yield result
   }
 
-  private def createOrUpdateUser(profile: CommonSocialProfile, authInfo: AuthInfo) = {
-    val displayName = (profile.fullName getOrElse profile.loginInfo.providerKey).slugify
-    val email = profile.email getOrElse s"$displayName@samebug.io"
-    val userData = User(0,
-      displayName = displayName,
-      email = email,
-      avatarURL = profile.avatarURL, fullName = profile.fullName)
-    for {
-      authInfo <- authInfoRepository.save(profile.loginInfo, authInfo)
-      user: User <- userService.createOrUpdate(profile.loginInfo, userData)
-    } yield user
+  private def createOrUpdateUser(profile: CommonSocialProfile, authInfo: AuthInfo) =
+    userService.retrieve(profile.loginInfo) flatMap {
+      case Some(user) => authInfoRepository.save(profile.loginInfo, authInfo) map { _ => user }
+      case None =>
+        val userData = User(0, None, profile.email, profile.fullName, profile.avatarURL)
+        for {
+          authInfo <- authInfoRepository.save(profile.loginInfo, authInfo)
+          user: User <- userService.create(profile.loginInfo, userData)
+        } yield user
+    }
+
+  private def initAuthenticator(loginInfo: LoginInfo, user: User, rememberMe: Boolean, expectedResult: Result)(implicit request: Request[AnyContent]): Future[AuthenticatorResult] = for {
+    authenticator <- env.authenticatorService.create(loginInfo) map applyRememberMe(rememberMe)
+    cookie <- env.authenticatorService.init(authenticator)
+    result: AuthenticatorResult <- env.authenticatorService.embed(cookie, expectedResult)
+  } yield {
+      env.eventBus.publish(LoginEvent(user, request, request2Messages))
+      result
+    }
+
+  private def applyRememberMe(rememberMe: Boolean)(authenticator: CookieAuthenticator): CookieAuthenticator = {
+    if (rememberMe) authenticator.copy(
+      expirationDateTime = clock.now + authenticatorExpiry,
+      idleTimeout = authenticatorIdleTimeout,
+      cookieMaxAge = cookieMaxAge
+    )
+    else authenticator
   }
 }
 

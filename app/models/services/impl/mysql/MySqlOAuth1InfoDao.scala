@@ -28,7 +28,7 @@ case class OAuth1InfoRow(providerID: String, providerKey: String, token: String,
 class OAuth1InfoTable(tag: Tag) extends AuthInfoTable[OAuth1InfoRow](tag, "oauth1_infos") {
   def * = (providerID, providerKey, token, secret) <>(OAuth1InfoRow.tupled, OAuth1InfoRow.unapply)
 
-  def token = column[String]("token", O.SqlType("varchar(32)"))
+  def token = column[String]("token", O.SqlType("varchar(512)"))
 
-  def secret = column[String]("password", O.SqlType("varchar(32)"))
+  def secret = column[String]("secret", O.SqlType("varchar(512)"))
 }

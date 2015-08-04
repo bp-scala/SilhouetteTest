@@ -6,7 +6,7 @@ import play.api.data.Forms._
 /**
  * The form which handles the sign up process.
  */
-object SignUpForm {
+object CreateProfileForm {
 
   /**
    * A play framework form.
@@ -15,8 +15,7 @@ object SignUpForm {
     mapping(
       "displayName" -> text,
       "email" -> email,
-      "password" -> nonEmptyText,
-      "realName" -> text,
+      "fullName" -> text,
       "avatarURL" -> optional(text)
     )(Data.apply)(Data.unapply)
   )
@@ -28,7 +27,7 @@ object SignUpForm {
   case class Data(
     displayName: String,
     email: String,
-    password: String,
-    realName: String,
+    fullName: String,
     avatarURL: Option[String])
+
 }

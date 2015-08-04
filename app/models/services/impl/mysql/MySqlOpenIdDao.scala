@@ -27,5 +27,5 @@ case class OpenIDInfoRow(providerID: String, providerKey: String, id: String) ex
 class OpenIDInfoTable(tag: Tag) extends AuthInfoTable[OpenIDInfoRow](tag, "openid_infos") {
   def * = (providerID, providerKey, id) <>(OpenIDInfoRow.tupled, OpenIDInfoRow.unapply)
 
-  def id = column[String]("id", O.SqlType("varchar(32)"))
+  def id = column[String]("id", O.SqlType("varchar(512)"))
 }

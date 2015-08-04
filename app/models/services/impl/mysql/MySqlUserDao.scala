@@ -47,17 +47,17 @@ class MySqlUserDao @Inject()(protected val dataSource: DataSource)(protected imp
 }
 
 class Users(tag: Tag) extends Table[User](tag, "users") {
-  def * = (id, displayName, email, avatarURL, fullName).shaped <>(User.tupled, User.unapply)
+  def * = (id, displayName, email, realName, avatarURL) <>(User.tupled, User.unapply)
 
   def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
 
-  def displayName = column[String]("display_name", O.SqlType("varchar(16)"))
+  def displayName = column[Option[String]]("display_name", O.SqlType("varchar(16)"))
 
-  def email = column[String]("email", O.SqlType("varchar(64)"))
+  def email = column[Option[String]]("email", O.SqlType("varchar(64)"))
+
+  def realName = column[Option[String]]("real_name", O.SqlType("varchar(128)"))
 
   def avatarURL = column[Option[String]]("avatar_url", O.SqlType("varchar(256)"))
-
-  def fullName = column[Option[String]]("full_name", O.SqlType("varchar(128)"))
 }
 
 case class UserLoginInfo(userId: Long, providerID: String, providerKey: String)
